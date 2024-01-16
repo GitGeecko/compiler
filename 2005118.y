@@ -525,10 +525,10 @@ declaration_list : declaration_list COMMA ID{
     $$->endLineNo=$4->endLineNo;
     $$->child=false;
     //$$->parseList.clear(); //additional
-    // $$->parseList.push_back($1);
-    // $$->parseList.push_back($2);
-    // $$->parseList.push_back($3);
-    // $$->parseList.push_back($4);   
+    $$->parseList.push_back($1);
+    $$->parseList.push_back($2);
+    $$->parseList.push_back($3);
+    $$->parseList.push_back($4);   
     //cout<<$$->getName()<<" ixjwxjwixwkxk   "<<$$->parseList[0]->getName()<<endl;
     $1->arrSize=stoi($3->getName());
     variableList.push_back($1);
