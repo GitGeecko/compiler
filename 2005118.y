@@ -40,7 +40,7 @@
                 symbol->parameter_list.push_back(s);
             }
             SymbolInfo *temp =new SymbolInfo(symbol);
-            symbolTable->insertSymbol(temp);
+            //symbolTable->insertSymbol(temp);
         }
         else{
             if(!cur->function){
@@ -145,7 +145,7 @@ unit : var_declaration{
     }
     | func_declaration {
         outputLog<<"unit : func_declaration"<<endl;
-        $$=new SymbolInfo("unit","func_declaration");
+        $$=new SymbolInfo("func_declaration","unit");
             $$->startLineNo=$1->startLineNo;
             $$->endLineNo=$1->endLineNo;
             $$->child=false;
@@ -153,7 +153,7 @@ unit : var_declaration{
     }
     | func_definition{
         outputLog<<"unit : func_definition"<<endl;
-        $$=new SymbolInfo("unit","func_definition");
+        $$=new SymbolInfo("func_definition","unit");
             $$->startLineNo=$1->startLineNo;
             $$->endLineNo=$1->endLineNo; 
             $$->child=false;
@@ -268,13 +268,14 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     $$->parseList.push_back($7);
                     parameterList.clear();
                     func=false;
+                    symbolTable->insertSymbol($2);
                 }
                 |type_specifier ID LPAREN RPAREN{
                     insertFunction($2,$1->getName());
                     func=true;
                 }compound_statement{
-                    outputLog<<"func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement"<<endl;
-                    $$=new SymbolInfo("type_specifier ID LPAREN parameter_list RPAREN compound_statement","func_definition");
+                    outputLog<<"func_definition : type_specifier ID LPAREN  RPAREN compound_statement"<<endl;
+                    $$=new SymbolInfo("type_specifier ID LPAREN RPAREN compound_statement","func_definition");
                     $$->startLineNo=$1->startLineNo;
                     $$->endLineNo=$6->endLineNo;
                     $$->child=false;
@@ -285,6 +286,7 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     $$->parseList.push_back($6);
                     parameterList.clear();
                     func=false;
+                    symbolTable->insertSymbol($2);
                 }
                 |type_specifier ID LPAREN error {
                     cout<<yylineno<<" Syntax error\n";//mod
@@ -419,10 +421,12 @@ var_declaration : type_specifier declaration_list SEMICOLON{
     }
     else{
         for(SymbolInfo* s : variableList){
+            cout<< s->getName()<<" "<<yylineno<<endl;
             s->typeSpecifier=$1->getName();
             SymbolInfo* cur=symbolTable->lookupCurrent(s->getName());
             if(cur==NULL){
-                symbolTable->insertSymbol(s);
+                SymbolInfo *news=new SymbolInfo(s);
+                symbolTable->insertSymbol(news);
             }
             else{
                 errorcount++;
@@ -431,7 +435,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
                 }
                 else cout<<"error redeclared\n";//modify
             }
-            delete cur;
+            //delete cur;
         }
     }
      variableList.clear();
@@ -524,11 +528,10 @@ declaration_list : declaration_list COMMA ID{
     $$->startLineNo=$1->startLineNo;
     $$->endLineNo=$4->endLineNo;
     $$->child=false;
-    //$$->parseList.clear(); //additional
     $$->parseList.push_back($1);
     $$->parseList.push_back($2);
     $$->parseList.push_back($3);
-    $$->parseList.push_back($4);   
+    $$->parseList.push_back($4);    
     //cout<<$$->getName()<<" ixjwxjwixwkxk   "<<$$->parseList[0]->getName()<<endl;
     $1->arrSize=stoi($3->getName());
     variableList.push_back($1);
