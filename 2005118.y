@@ -12,7 +12,7 @@
     SymbolTable *symbolTable= new SymbolTable(11);
     vector<SymbolInfo*>parameterList,variableList;
     bool zero=false,func=false;
-    ofstream outputLog,outputParse;
+    ofstream outputLog,outputParse,outputError;
     int errorcount=0,space=0;
 
     void yyerror(string s)
@@ -44,10 +44,13 @@
         }
         else{
             if(!cur->function){
-                cout<<"error prev declared but not asa funtion\n";// modify
+                errorcount++;// modify
+                outputError<<"Line# "<<yylineno<<": '"<<cur->getName()<<"' redeclared as different kind of symbol\n";
             }
             else if(cur->defined){
+                errorcount++;
                 cout<<"Error func previously defined\n";//modify
+
             }
             else if(cur->declared){
                 if(cur->typeSpecifier==typeSpecifier){
@@ -57,20 +60,26 @@
                         for(int i=0;i<parameterList.size();i++){
                             if(parameterList[i]->typeSpecifier!=symbol->parameter_list[i]->typeSpecifier){
                                 flag=false;
-                                cout<<"error parameter mismatch\n";//modify
+                                errorcount++;
+                                outputError<<"Line# "<<yylineno<<": Type mismatch for arguement "<<i+1<<" of '"<<symbol->getName()<<"'\n";
                                 return;            
                             }
                         }    
                     }
                     if(flag){
-                        cur->defined=true;
+                        symbol->defined=true;
                     }
                     else{
-                        cout<<"argument dont match\n";//modify
+                        if(parameterList.size()<symbol->parameter_list.size()){
+                            outputError<<"Line# "<<yylineno<<": Too few arguements to function '"<<symbol->getName()<<"'\n";
+                        }
+                        else{
+                            outputError<<"Line# "<<yylineno<<": Too many arguements to function '"<<symbol->getName()<<"'\n";
+                        }
                     }
                 }
                 else{
-                    cout<<"error type mismatch\n"; //modify
+                    outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<symbol->getName()<<"'\n"; //modify
                 }
 
             }
@@ -190,7 +199,8 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON{
         $2->typeSpecifier=$1->getName();
         if(!$2->function){
             errorcount++;
-            cout<<"Error declared but not as a function\n";//modify it
+            //cout<<"Error declared but not as a function\n";//modify it
+            outputError<<"Line# "<<yylineno<<": '"<<$2->getName()<<"' redeclared s different kind of symbol\n";
         }
         else if(cur->getType()==$2->getType()){
             bool flag=false;
@@ -200,11 +210,13 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON{
                     if(cur->parameter_list[i]->typeSpecifier!=$2->parameter_list[i]->typeSpecifier){
                         flag=false;
                         errorcount++;
-                        cout<<"error parameters dont match\n"; //modify
+                        outputError<<"Line# "<<yylineno<<": Type mismatch for argument "<<i+1<<"of '"<<cur->getName()<<"' \n";///modify written lately
+                    
+                        //cout<<"error parameters dont match\n"; //modify
                     }
                 }
                 if(flag){
-                    cur->declared=true;
+                    cur->declared=true;//modify  follow other function errors
                 }
             }
         }
@@ -238,7 +250,8 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON{
     else{
         if(!cur->function){
             errorcount++;
-            cout<<"Error not a function\n"; //modify
+            //cout<<"Error not a function\n"; //modify
+            outputError<<"Line# "<<yylineno<<": '"<<cur->getName()<<"' redeclared as different kind of symbol\n";
 
         }
         else {
@@ -289,11 +302,12 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     symbolTable->insertSymbol($2);
                 }
                 |type_specifier ID LPAREN error {
-                    cout<<yylineno<<" Syntax error\n";//mod
+                    //cout<<yylineno<<" Syntax error\n";//mod
                     outputLog<<"Error at line no "<<yylineno<<" : syntax error\n";
                     parameterList.clear();
                     // chechk if needed after rparen error check
                 }RPAREN compound_statement{
+                    outputError<<"Line# "<<yylineno<<": Syntax error at parameter list of function definition\n";
                     outputLog<<"func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement"<<endl;
                     $$=new SymbolInfo("type_specifier ID LPAREN parameter_list RPAREN compound_statement","func_definition");
                     $$->startLineNo=$1->startLineNo;
@@ -326,7 +340,16 @@ parameter_list : parameter_list COMMA type_specifier ID{
     
    
     $4->typeSpecifier=$3->getName();
-    parameterList.push_back($4);
+    bool flag=true;
+    for(int i=0;i<parameterList.size();i++){
+        if(parameterList[i]->getName()==$4->getName()){
+            flag=false;
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Redefinition of parameter '"<<$4->getName()<<"'\n";
+            //break;
+        }
+    }
+    if(flag)parameterList.push_back($4);
 }
 |parameter_list COMMA type_specifier{
     outputLog<<"parameter_list : parameter_list COMMA type_specifier"<<endl;
@@ -350,7 +373,16 @@ parameter_list : parameter_list COMMA type_specifier ID{
     $$->parseList.push_back($1);
     $$->parseList.push_back($2);
     $2->typeSpecifier=$1->getName(); 
-    parameterList.push_back($2);
+    bool flag=true;
+    for(int i=0;i<parameterList.size();i++){
+        if(parameterList[i]->getName()==$2->getName()){
+            flag=false;
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Redefinition of parameter '"<<$2->getName()<<"'\n";
+            //break;
+        }
+    }
+    if(flag)parameterList.push_back($2);
 
 }
 |type_specifier{
@@ -416,7 +448,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
     if($1->getName()=="VOID"){
         for(SymbolInfo* s : variableList){
             errorcount++;
-            cout<<"Error variable or field but declared void\n";
+            outputError<<"Line# "<<yylineno<<": Variable or field '"<<s->getName()<<"' declared void\n";
         }
     }
     else{
@@ -431,9 +463,10 @@ var_declaration : type_specifier declaration_list SEMICOLON{
             else{
                 errorcount++;
                 if(cur->typeSpecifier!=s->typeSpecifier){
-                    cout<<"errortype cpnflict\n";//modify;
+                     outputError<<"Line# "<<yylineno<<": Conflicting types for'"<<s->getName()<<"'\n";
                 }
-                else cout<<"error redeclared\n";//modify
+                // else cout<<"error redeclared\n";//modify
+                else outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<s->getName()<<"'\n";
             }
             //delete cur;
         }
@@ -445,6 +478,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
     outputLog<<"Error at lin no "<<yylineno<<" :syntax error\n";
     //check if need for if condiition
 }SEMICOLON {
+    outputError<<"Line# "<<yylineno<<": Syntax error at declaration list of variable declaration\n";
     outputLog<<"var_declaration : type_specifier declaration_list SEMICOLON"<<endl;
     $$= new SymbolInfo("type_specifier declaration_list SEMICOLON","var_declaration");
     $$->startLineNo=$1->startLineNo;
@@ -639,7 +673,9 @@ statement : var_declaration {
         $$->child=false;
         SymbolInfo* cur= symbolTable->lookup($3->getName());
         if(cur==NULL){
-            cout<<"Error undeclared\n";// modify
+            //cout<<"Error undeclared\n";// modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Undeclared variable '"<<$3->getName()<<"' \n";
         }
         $$->addParseList($3);
         $$->addParseList($4);
@@ -674,6 +710,8 @@ expression_statement : SEMICOLON{
     }|error{
         //check if conditioning needed
     }SEMICOLON{
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Syntax error at expression of expression statement\n";
         outputLog<<"expression_statement : expression SEMICOLON\t\t\n";
         $$= new SymbolInfo("expression SEMICOLON","expression_statement");
         $$->startLineNo=$3->startLineNo;
@@ -698,10 +736,13 @@ variable : ID{
         $$->addParseList($1);
         SymbolInfo* cur = symbolTable->lookup($1->getName());
         if(cur==NULL){
-            cout<<"error undeclared\n"; //modify
+            //cout<<"error undeclared\n"; //modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Undeclared variable '"<<$1->getName()<<"'\n";
         }
         else if(cur->typeSpecifier=="VOID"){
-            cout<<"error declared void\n";//mpdify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": '"<<$1->getName()<<"' declared as void\n";
         }
         else{
             $$->typeSpecifier=cur->typeSpecifier;
@@ -715,21 +756,27 @@ variable : ID{
         $$->child=false;
         
         SymbolInfo* cur = symbolTable->lookup($1->getName());
+        //cout<<cur->getName()<<" "<<cur->arrSize<<endl;
         if(cur==NULL){
-            cout<<"error undeclared\n"; //modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Undeclared variable '"<<$1->getName()<<"'\n"; //modify
         }
         else if(cur->typeSpecifier=="VOID"){
-            cout<<"error declared void\n";//mpdify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": '"<<$1->getName()<<"' declared as void\n";//mpdify
         }
         else if(cur->arrSize==-1){ 
-            cout<<"error not an array\n"; //modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": '"<<$1->getName()<<"' is not an array\n"; //modify
         }
         else{
             $$->typeSpecifier=cur->typeSpecifier;
             $$->arrSize=-1;//// imp temp solution check if wrong
         }
         if($3->typeSpecifier!="INT"){
-            cout<<"error index not an integer\n";//modify
+            //cout<<"error index not an integer\n";//modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Array subscript is not an integer\n";
         }
         $$->addParseList($1);
         $$->addParseList($2);
@@ -757,21 +804,27 @@ expression : logic_expression{
     $$->addParseList($2);
     $$->addParseList($3);
     if($3->typeSpecifier=="VOID"||$1->typeSpecifier=="VOID"){
-        cout<<"error void\n"; //modify
+        //cout<<"error void\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else if($1->typeSpecifier=="FLOAT"&&$3->typeSpecifier=="INT"){
         $$->typeSpecifier=$1->typeSpecifier;
     }
     else if($3->typeSpecifier=="FLOAT"&&$1->typeSpecifier=="INT"){
-        cout<<"Error warning loss of data\n"; //modify
+        //cout<<"Error warning loss of data\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Warning: possible loss of data in assignment of FLOAT to INT\n";
         $$->typeSpecifier=$1->typeSpecifier;
     }
     else if(($1->arrSize==-1&&$3->arrSize!=-1)||($3->arrSize==-1&&$1->arrSize!=-1)){
-        cout<<$1->arrSize<<" p "<<$3->arrSize<<" "<<yylineno<<" "<<$1->getName()<<endl;
-        cout<<"Wrong type cast error1\n"; //modify
+        //cout<<$1->arrSize<<" p "<<$3->arrSize<<" "<<yylineno<<" "<<$1->getName()<<endl;
+        //cout<<"Wrong type cast error1\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Warning: wrong type cast\n";//modify and fix urgent 
     }
     else if($1->typeSpecifier!=$3->typeSpecifier && $1->typeSpecifier!=""&&$3->typeSpecifier!=""){ ////recheck this imp
-        cout<<"typemismatch error1\n";//mod and check grammer too
+        //cout<<"typemismatch error1\n";//modify and check grammer too
     }
     else $$->typeSpecifier=$1->typeSpecifier;
 }
@@ -798,7 +851,9 @@ logic_expression : rel_expression{
     $$->addParseList($2);
     $$->addParseList($3);    
     if($3->typeSpecifier=="VOID"||$1->typeSpecifier=="VOID"){
-        cout<<"error void\n"; //modify
+        //cout<<"error void\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else{
         $$->typeSpecifier="INT";
@@ -824,7 +879,9 @@ rel_expression : simple_expression{
     $$->addParseList($2);
     $$->addParseList($3);
     if($3->typeSpecifier=="VOID"||$1->typeSpecifier=="VOID"){
-        cout<<"error void\n"; //modify
+        //cout<<"error void\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else{
         $$->typeSpecifier="INT";
@@ -850,7 +907,9 @@ simple_expression : term {
     $$->addParseList($2);
     $$->addParseList($3);
     if($3->typeSpecifier=="VOID"||$1->typeSpecifier=="VOID"){
-        cout<<"error void\n"; //modify
+        //cout<<"error void\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else{
         if($3->typeSpecifier=="FLOAT"||$1->typeSpecifier=="FLOAT"){
@@ -882,24 +941,30 @@ term : unary_expression {
     $$->addParseList($2);
     $$->addParseList($3);
     if($3->typeSpecifier=="VOID"||$1->typeSpecifier=="VOID"){
-        cout<<"error void\n"; //modify
+        //cout<<"error void\n"; //modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     if($2->getName()=="%"){
-        if($3->typeSpecifier=="INT"||$1->typeSpecifier=="INT"){
+        if($3->typeSpecifier=="INT"&&$1->typeSpecifier=="INT"){
             if(zero){
-                cout<<"error division by zero\n";//modify
+                //cout<<"error division by zero\n";//modify
+                errorcount++;
+                outputError<<"Line# "<<yylineno<<": Warning: division by zero\n";//modify
             }
             else{
                 $$->typeSpecifier="INT";
             }
         }
         else{
-            cout<<"operands of modulus must be integer\n"; //modify
+            errorcount++;
+                outputError<<"Line# "<<yylineno<<": Operands of modulus must be integers\n"; //modify
         }
     }
     else if($2->getName()=="/"){
         if(zero){
-                cout<<"error division by zero\n";//modify
+                errorcount++;
+                outputError<<"Line# "<<yylineno<<": Warning: division by zero\n";//modify
             }
         if($3->typeSpecifier=="FLOAT"||$1->typeSpecifier=="FLOAT"){
                 $$->typeSpecifier="FLOAT";
@@ -932,7 +997,9 @@ unary_expression : ADDOP unary_expression{
     $$->addParseList($1);
     $$->addParseList($2);
     if($2->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else $$->typeSpecifier=$2->typeSpecifier;
 }|NOT unary_expression {
@@ -944,7 +1011,9 @@ unary_expression : ADDOP unary_expression{
     $$->addParseList($1);
     $$->addParseList($2);
     if($2->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else $$->typeSpecifier="INT";
 }|factor {
@@ -967,7 +1036,9 @@ factor : variable {
     $$->child=false;
     $$->addParseList($1);
     if($1->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else{
         $$->typeSpecifier=$1->typeSpecifier;
@@ -981,36 +1052,51 @@ factor : variable {
     $$->child=false;
     SymbolInfo* cur = symbolTable->lookup($1->getName());
     if(cur==NULL){
-        cout<<"error not declared\n"; //mdoify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Undeclared function '"<<$1->getName()<<"'\n"; //mdoify
     }
     else{
         $$->typeSpecifier=$1->typeSpecifier;
         if(!cur->function){
-            cout<<"error conflict type\n"; //modfiy
+            //cout<<"error conflict type\n"; //modfiy
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<$1->getName()<< "'";
         }
         else if(!cur->defined){
-            cout<<"error not defined\n"; //modify
+           // cout<<"error not defined\n"; //modify
+            errorcount++;
+            outputError<<"Line# "<<yylineno<<": Undefiend function '"<<$1->getName()<< "'";
         }
         else{
             if(cur->parameter_list.size()==$3->parameter_list.size()){
                 bool flag=true;
                 for(int i=0;i<cur->parameter_list.size();i++){
                     if(cur->parameter_list[i]->typeSpecifier!=$3->parameter_list[i]->typeSpecifier){
-                        //cout<<cur->parameter_list[i]->getName()<<" "<<cur->parameter_list[i]->typeSpecifier<<endl;
+                        //cout<<cur->parameter_list[i]->getName()<<" "<<cur->parameter_list[i]->typeSpecifier<<" "<<yylineno;
                         //cout<<" "<<$3->parameter_list[i]->typeSpecifier<<" "<<$3->parameter_list[i]->getName()<<endl;
                         flag=false;
-                        break;
+                        errorcount++;
+                        outputError<<"Line# "<<yylineno<<": Type mismatch for argument "<<i+1<<" of '"<<$3->getName()<<"'\n";
+                        //break;
                     }
                 }
                 if(!flag){
-                    cout<<"args dont match \n"; //modify
+                    //cout<<"args dont match \n"; //modify
                 }
                 else{
                     $$->typeSpecifier=cur->typeSpecifier;
                 }
             }
             else{
-                cout<<"error parameters not equal\n";//modify
+                //cout<<"error parameters not equal\n";//modify
+                if(cur->parameter_list.size()<$3->parameter_list.size()){
+                    errorcount++;
+                    outputError<<"Line# "<<yylineno<<": Too few arguments to function '"<<$3->getName()<<"'\n";
+                }
+                else{
+                    errorcount++;
+                    outputError<<"Line# "<<yylineno<<": Too many arguments to function '"<<$3->getName()<<"'\n";
+                }
             }
         }
     }
@@ -1028,7 +1114,9 @@ factor : variable {
     $$->addParseList($2);
     $$->addParseList($3);
     if($2->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else{
         $$->typeSpecifier=$2->typeSpecifier;
@@ -1063,7 +1151,9 @@ factor : variable {
     $$->addParseList($1);
     $$->addParseList($2);
     if($1->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else $$->typeSpecifier=$1->typeSpecifier;
 }|variable DECOP{
@@ -1075,7 +1165,9 @@ factor : variable {
     $$->addParseList($1);
     $$->addParseList($2);
     if($1->typeSpecifier=="VOID"){
-        cout<<"error void\n";//modify
+        //cout<<"error void\n";//modify
+        errorcount++;
+        outputError<<"Line# "<<yylineno<<": Void cannot be used in expression\n";
     }
     else $$->typeSpecifier=$1->typeSpecifier;
 }
@@ -1132,6 +1224,7 @@ int main(int argc ,char *argv[]){
     fp=fopen(argv[1],"r");
     outputLog.open("log.txt");
     outputParse.open("parse.txt");
+    outputError.open("error.txt");
     yyin=fp;
     yyparse();
 }
