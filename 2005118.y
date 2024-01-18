@@ -13,7 +13,7 @@
     vector<SymbolInfo*>parameterList,variableList;
     bool zero=false,func=false;
     ofstream outputLog,outputParse,outputError;
-    int errorcount=0,space=0;
+    int errorcount=0,space=0,line=0;
 
     void yyerror(string s)
     {
@@ -53,6 +53,7 @@
 
             }
             else if(cur->declared){
+                cout<<cur->getName()<<" "<<cur->typeSpecifier<<" "<<typeSpecifier<<endl;
                 if(cur->typeSpecifier==typeSpecifier){
                     bool flag=false;
                     if(parameterList.size()==symbol->parameter_list.size()){
@@ -70,15 +71,18 @@
                         symbol->defined=true;
                     }
                     else{
-                        if(parameterList.size()<symbol->parameter_list.size()){
-                            outputError<<"Line# "<<yylineno<<": Too few arguements to function '"<<symbol->getName()<<"'\n";
-                        }
-                        else{
-                            outputError<<"Line# "<<yylineno<<": Too many arguements to function '"<<symbol->getName()<<"'\n";
-                        }
+                        // if(parameterList.size()<symbol->parameter_list.size()){
+                        //     outputError<<"Line# "<<yylineno<<": Too few arguements to function '"<<symbol->getName()<<"'\n";
+                        // }
+                        // else{
+                        //     outputError<<"Line# "<<yylineno<<": Too many arguements to function '"<<symbol->getName()<<"'\n";
+                        // }
+                        errorcount++;
+                        outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<symbol->getName()<<"'\n"; //modify
                     }
                 }
                 else{
+                    errorcount++;
                     outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<symbol->getName()<<"'\n"; //modify
                 }
 
@@ -108,8 +112,8 @@
 
 %start start
 
-%nonassoc LOWER_THAN_ELSE
-
+%nonassoc THEN
+%nonassoc ELSE
 
 %%
 
@@ -119,6 +123,7 @@ start : program
             $$=new SymbolInfo("program","start");
             $$->startLineNo=$1->startLineNo;
             $$->endLineNo=$1->endLineNo;
+            line=$$->endLineNo;
             $$->child=false;
             $$->parseList.push_back($1);
             printTree($$,0);
@@ -475,7 +480,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
 }
 |type_specifier error {
     errorcount++;
-    outputLog<<"Error at lin no "<<yylineno<<" :syntax error\n";
+    outputLog<<"Error at line no "<<yylineno<<" :syntax error\n";
     //check if need for if condiition
 }SEMICOLON {
     outputError<<"Line# "<<yylineno<<": Syntax error at declaration list of variable declaration\n";
@@ -493,7 +498,26 @@ var_declaration : type_specifier declaration_list SEMICOLON{
     $$->parseList.push_back($4);
 
 
-    cout<<"error at line no "<<yylineno<<endl; //modify
+    // for  errorecover test  modify
+    for(SymbolInfo* s : variableList){
+            //cout<< s->getName()<<" "<<yylineno<<endl;
+            s->typeSpecifier=$1->getName();
+            SymbolInfo* cur=symbolTable->lookupCurrent(s->getName());
+            if(cur==NULL){
+                SymbolInfo *news=new SymbolInfo(s);
+                symbolTable->insertSymbol(news);
+            }
+            else{
+                errorcount++;
+                if(cur->typeSpecifier!=s->typeSpecifier){
+                     outputError<<"Line# "<<yylineno<<": Conflicting types for'"<<s->getName()<<"'\n";
+                }
+                // else cout<<"error redeclared\n";//modify
+                else outputError<<"Line# "<<yylineno<<": Conflicting types for '"<<s->getName()<<"'\n";
+            }
+            //delete cur;
+        }
+        variableList.clear();
 }
 ;
 //learn and handle type_specifier error
@@ -625,7 +649,7 @@ statement : var_declaration {
         $$->addParseList($6);
         $$->addParseList($7);
         $$->child=false;
-    }|IF LPAREN expression RPAREN statement %prec LOWER_THAN_ELSE{
+    }|IF LPAREN expression RPAREN statement %prec THEN{
         outputLog<<"statement : IF LPAREN expression RPAREN statement\n";
         $$= new SymbolInfo("IF LPAREN expression RPAREN statement","statement");
         $$->startLineNo=$1->startLineNo;
@@ -933,7 +957,7 @@ term : unary_expression {
     $$->addParseList($1);
 }|term MULOP unary_expression{
     outputLog<<"term : term MULOP unary_expression\n";
-    $$=new SymbolInfo("tterm MULOP unary_expression","simple_expression");
+    $$=new SymbolInfo("term MULOP unary_expression","simple_expression");
     $$->startLineNo=$1->startLineNo;
     $$->endLineNo=$3->endLineNo;
     $$->child=false;
@@ -1076,7 +1100,7 @@ factor : variable {
                         //cout<<" "<<$3->parameter_list[i]->typeSpecifier<<" "<<$3->parameter_list[i]->getName()<<endl;
                         flag=false;
                         errorcount++;
-                        outputError<<"Line# "<<yylineno<<": Type mismatch for argument "<<i+1<<" of '"<<$3->getName()<<"'\n";
+                        outputError<<"Line# "<<yylineno<<": Type mismatch for argument "<<i+1<<" of '"<<$1->getName()<<"'\n";
                         //break;
                     }
                 }
@@ -1089,13 +1113,13 @@ factor : variable {
             }
             else{
                 //cout<<"error parameters not equal\n";//modify
-                if(cur->parameter_list.size()<$3->parameter_list.size()){
+                if(cur->parameter_list.size()>$3->parameter_list.size()){
                     errorcount++;
-                    outputError<<"Line# "<<yylineno<<": Too few arguments to function '"<<$3->getName()<<"'\n";
+                    outputError<<"Line# "<<yylineno<<": Too few arguments to function '"<<$1->getName()<<"'\n";
                 }
                 else{
                     errorcount++;
-                    outputError<<"Line# "<<yylineno<<": Too many arguments to function '"<<$3->getName()<<"'\n";
+                    outputError<<"Line# "<<yylineno<<": Too many arguments to function '"<<$1->getName()<<"'\n";
                 }
             }
         }
@@ -1227,4 +1251,6 @@ int main(int argc ,char *argv[]){
     outputError.open("error.txt");
     yyin=fp;
     yyparse();
+    outputLog<<"Total Lines: "<<line<<endl;
+    outputLog<<"Total Errors: "<<errorcount<<endl;
 }
