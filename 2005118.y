@@ -11,19 +11,24 @@
     extern FILE *yyin;
     SymbolTable *symbolTable= new SymbolTable(11);
     vector<SymbolInfo*>parameterList,variableList;
-    bool zero=false,func=false;
+    bool zero=false,func=false,currently_error=true;
     ofstream outputLog,outputParse,outputError;
     int errorcount=0,space=0,line=0;
 
     void yyerror(string s)
     {
-        cout<<yylineno<<" "<<s<<endl; //debug
+       // cout<<yylineno<<" "<<s<<endl; //debug
+       errorcount++;
+       //cout<<s<<endl;
+       outputLog<<"Error at line no "<<yylineno<<" : "<<s<<endl;
+
     }
     void insertParameters(){
         for(SymbolInfo* s : parameterList){
             SymbolInfo *temp=new SymbolInfo(s);
             if(s->getName()==""&&s->getType()==""){
              }
+             cout<<s->getName()<<" 3 "<<yylineno<<endl;
             if(!symbolTable->insertSymbol(temp)){
                 cout<<"error redefined\n";
             }
@@ -198,6 +203,7 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON{
             $2->parameter_list.push_back(s);
         }
         SymbolInfo *newEntry=new SymbolInfo($2);
+        cout<<newEntry->getName()<<" 4 "<<yylineno<<endl;
         symbolTable->insertSymbol(newEntry);
     }
     else{
@@ -250,6 +256,7 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON{
         $2->function=true;
         $2->declared=true;
         SymbolInfo* newEntry=new SymbolInfo($2);
+        cout<<newEntry->getName()<<" 5 "<<yylineno<<endl;
         symbolTable->insertSymbol(newEntry);
     }
     else{
@@ -286,6 +293,7 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     $$->parseList.push_back($7);
                     parameterList.clear();
                     func=false;
+                    cout<<$2->getName()<<" 6 "<<yylineno<<endl;
                     symbolTable->insertSymbol($2);
                 }
                 |type_specifier ID LPAREN RPAREN{
@@ -304,19 +312,28 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     $$->parseList.push_back($6);
                     parameterList.clear();
                     func=false;
+                    cout<<$2->getName()<<" 7 "<<yylineno<<endl;
                     symbolTable->insertSymbol($2);
                 }
                 |type_specifier ID LPAREN error {
                     //cout<<yylineno<<" Syntax error\n";//mod
-                    outputLog<<"Error at line no "<<yylineno<<" : syntax error\n";
-                    parameterList.clear();
+                    if(currently_error){
+                        //errorcount++;
+                        //outputLog<<"Error at line no "<<yylineno<<" : syntax error\n";
+                        outputError<<"Line# "<<yylineno<<": Syntax error at parameter list of function definition\n";
+                        parameterList.clear();
+                        currently_error=false;
+                    }
                     // chechk if needed after rparen error check
-                }RPAREN compound_statement{
-                    outputError<<"Line# "<<yylineno<<": Syntax error at parameter list of function definition\n";
+                }RPAREN{
+                    currently_error=false;
+                } compound_statement{
+                    //outputLog<<"Error at line no "<<yylineno<<" : syntax error\n";
+                    //outputError<<"Line# "<<yylineno<<": Syntax error at parameter list of function definition\n";
                     outputLog<<"func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement"<<endl;
                     $$=new SymbolInfo("type_specifier ID LPAREN parameter_list RPAREN compound_statement","func_definition");
                     $$->startLineNo=$1->startLineNo;
-                    $$->endLineNo=$6->endLineNo; //check line no
+                    $$->endLineNo=$8->endLineNo; //check line no
                     $$->child=false;
                     $$->parseList.push_back($1);
                     $$->parseList.push_back($2);
@@ -327,8 +344,10 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN
                     $$->parseList.push_back(temp);
                     //$$->addParseList($5);//check
                     $$->parseList.push_back($6);//check //$8 push
-                    $$->parseList.push_back($7);///my intuition vvimp to check
+                    $$->parseList.push_back($8);///my intuition vvimp to check
                     func=false;
+                    currently_error=true;
+                    parameterList.clear();
                 }
                 ;
                 /// type_specifier ID LPAREN error "identify this error and try its grammer"
@@ -463,6 +482,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
             SymbolInfo* cur=symbolTable->lookupCurrent(s->getName());
             if(cur==NULL){
                 SymbolInfo *news=new SymbolInfo(s);
+                cout<<news->getName()<<" 2 "<<yylineno<<endl;
                 symbolTable->insertSymbol(news);
             }
             else{
@@ -479,10 +499,16 @@ var_declaration : type_specifier declaration_list SEMICOLON{
      variableList.clear();
 }
 |type_specifier error {
-    errorcount++;
-    outputLog<<"Error at line no "<<yylineno<<" :syntax error\n";
+    //errorcount++;
+    if(currently_error){
+        //errorcount++;
+        //outputLog<<"Error at line no "<<yylineno<<" :syntax error\n";
+        currently_error=false;
+    }
     //check if need for if condiition
 }SEMICOLON {
+    errorcount++;
+    //outputLog<<"Error at line no "<<yylineno<<" :syntax error\n";
     outputError<<"Line# "<<yylineno<<": Syntax error at declaration list of variable declaration\n";
     outputLog<<"var_declaration : type_specifier declaration_list SEMICOLON"<<endl;
     $$= new SymbolInfo("type_specifier declaration_list SEMICOLON","var_declaration");
@@ -496,6 +522,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
     temp->endLineNo=yylineno;
     $$->parseList.push_back(temp);
     $$->parseList.push_back($4);
+    currently_error=true;
 
 
     // for  errorecover test  modify
@@ -505,6 +532,7 @@ var_declaration : type_specifier declaration_list SEMICOLON{
             SymbolInfo* cur=symbolTable->lookupCurrent(s->getName());
             if(cur==NULL){
                 SymbolInfo *news=new SymbolInfo(s);
+                cout<<news->getName()<<" 1 "<<yylineno<<endl;
                 symbolTable->insertSymbol(news);
             }
             else{
@@ -734,7 +762,7 @@ expression_statement : SEMICOLON{
     }|error{
         //check if conditioning needed
     }SEMICOLON{
-        errorcount++;
+        //errorcount++;
         outputError<<"Line# "<<yylineno<<": Syntax error at expression of expression statement\n";
         outputLog<<"expression_statement : expression SEMICOLON\t\t\n";
         $$= new SymbolInfo("expression SEMICOLON","expression_statement");
